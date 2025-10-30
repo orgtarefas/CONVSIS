@@ -1,374 +1,271 @@
-// Gerenciamento de Estado
-let tarefas = [];
-let usuarios = [];
-let editandoTarefaId = null;
-
-// Inicialização
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🚀 Inicializando sistema...');
-    document.getElementById('loadingText').textContent = 'Verificando autenticação...';
-    
-    // Verificar se usuário está logado
-    const usuarioLogado = JSON.parse(localStorage.getItem('usuarioLogado'));
-    
-    if (!usuarioLogado) {
-        console.log('❌ Usuário não logado, redirecionando...');
-        window.location.href = 'login.html';
-        return;
+// Dados de exemplo para demonstração
+let convenios = [
+    {
+        id: 1,
+        nome: "Hospital Santa Maria",
+        tipo: "saude",
+        status: "ativo",
+        dataCriacao: "2024-01-15",
+        descricao: "Convênio para atendimento médico",
+        email: "contato@santamaria.com.br"
+    },
+    {
+        id: 2,
+        nome: "Universidade Federal",
+        tipo: "educacao",
+        status: "pendente",
+        dataCriacao: "2024-02-01",
+        descricao: "Convênio para programas educacionais",
+        email: "convenios@uf.edu.br"
+    },
+    {
+        id: 3,
+        nome: "Centro Cultural",
+        tipo: "cultural",
+        status: "inativo",
+        dataCriacao: "2023-11-20",
+        descricao: "Convênio para eventos culturais",
+        email: "cultural@centro.com.br"
     }
+];
 
-    console.log('👤 Usuário logado:', usuarioLogado.nome);
-    document.getElementById('userName').textContent = usuarioLogado.nome;
-    document.getElementById('data-atual').textContent = new Date().toLocaleDateString('pt-BR');
-    
-    // Inicializar sistema
-    inicializarSistema();
+// Inicialização da aplicação
+document.addEventListener('DOMContentLoaded', function() {
+    inicializarAplicacao();
 });
 
-function inicializarSistema() {
-    console.log('🔥 Inicializando Firebase...');
-    document.getElementById('loadingText').textContent = 'Conectando ao banco de dados...';
-    
-    // Aguardar Firebase carregar
-    if (!window.db) {
-        console.log('⏳ Aguardando Firebase...');
-        setTimeout(inicializarSistema, 500);
-        return;
-    }
-
-    console.log('✅ Firebase carregado!');
-    
-    try {
-        configurarDataMinima();
-        carregarUsuarios();
-        configurarFirebase();
-        
-    } catch (error) {
-        console.error('❌ Erro na inicialização:', error);
-        document.getElementById('status-sincronizacao').innerHTML = '<i class="fas fa-exclamation-triangle"></i> Offline';
-        mostrarErro('Erro ao conectar com o banco de dados');
-    }
+function inicializarAplicacao() {
+    carregarListaConvenios();
+    popularSelectConvenios();
+    configurarEventListeners();
 }
 
-function configurarDataMinima() {
-    const hoje = new Date().toISOString().split('T')[0];
-    document.getElementById('tarefaDataInicio').min = hoje;
-    document.getElementById('tarefaDataFim').min = hoje;
-}
+function configurarEventListeners() {
+    // Formulário de solicitação
+    document.getElementById('solicitacaoForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        enviarSolicitacao();
+    });
 
-function configurarFirebase() {
-    console.log('📡 Configurando listener do Firestore...');
-    document.getElementById('loadingText').textContent = 'Carregando tarefas...';
-    
-    // Listener em tempo real para tarefas
-    db.collection("tarefas")
-        .orderBy("dataCriacao", "desc")
-        .onSnapshot(
-            (snapshot) => {
-                console.log('📊 Dados recebidos:', snapshot.size, 'tarefas');
-                tarefas = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                
-                // Finalizar carregamento
-                document.getElementById('loadingScreen').style.display = 'none';
-                document.getElementById('mainContent').style.display = 'block';
-                document.getElementById('status-sincronizacao').innerHTML = '<i class="fas fa-bolt"></i> Tempo Real';
-                
-                atualizarInterface();
-                console.log('🎉 Sistema carregado com sucesso!');
-            },
-            (error) => {
-                console.error('❌ Erro no Firestore:', error);
-                document.getElementById('loadingScreen').style.display = 'none';
-                document.getElementById('mainContent').style.display = 'block';
-                document.getElementById('status-sincronizacao').innerHTML = '<i class="fas fa-exclamation-triangle"></i> Erro Conexão';
-                mostrarErro('Erro ao carregar tarefas: ' + error.message);
-            }
-        );
-}
+    // Formulário de atualização
+    document.getElementById('atualizacaoForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        atualizarConvenio();
+    });
 
-async function carregarUsuarios() {
-    console.log('👥 Carregando usuários...');
-    
-    try {
-        const snapshot = await db.collection("usuarios").get();
-        
-        usuarios = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-
-        console.log('✅ Usuários carregados:', usuarios.length);
-
-        // Preencher selects de responsável
-        const selectResponsavel = document.getElementById('tarefaResponsavel');
-        const selectFiltro = document.getElementById('filterResponsavel');
-        
-        selectResponsavel.innerHTML = '<option value="">Selecionar...</option>';
-        selectFiltro.innerHTML = '<option value="">Todos</option>';
-        
-        usuarios.forEach(usuario => {
-            const option = `<option value="${usuario.usuario}">${usuario.nome || usuario.usuario}</option>`;
-            selectResponsavel.innerHTML += option;
-            selectFiltro.innerHTML += option;
-        });
-        
-    } catch (error) {
-        console.error('❌ Erro ao carregar usuários:', error);
-    }
-}
-
-// Modal Functions
-function abrirModalTarefa(tarefaId = null) {
-    editandoTarefaId = tarefaId;
-    const modal = document.getElementById('modalTarefa');
-    const titulo = document.getElementById('modalTitulo');
-    
-    if (tarefaId) {
-        titulo.textContent = 'Editar Tarefa';
-        preencherFormulario(tarefaId);
-    } else {
-        titulo.textContent = 'Nova Tarefa';
-        limparFormulario();
-    }
-    
-    modal.style.display = 'flex';
-}
-
-function fecharModalTarefa() {
-    document.getElementById('modalTarefa').style.display = 'none';
-    editandoTarefaId = null;
-}
-
-function preencherFormulario(tarefaId) {
-    const tarefa = tarefas.find(t => t.id === tarefaId);
-    if (!tarefa) return;
-    
-    document.getElementById('tarefaTitulo').value = tarefa.titulo;
-    document.getElementById('tarefaDescricao').value = tarefa.descricao || '';
-    document.getElementById('tarefaPrioridade').value = tarefa.prioridade;
-    document.getElementById('tarefaStatus').value = tarefa.status;
-    document.getElementById('tarefaDataInicio').value = tarefa.dataInicio || '';
-    document.getElementById('tarefaDataFim').value = tarefa.dataFim;
-    document.getElementById('tarefaResponsavel').value = tarefa.responsavel || '';
-}
-
-function limparFormulario() {
-    document.getElementById('formTarefa').reset();
-    configurarDataMinima();
-}
-
-// CRUD Operations
-async function salvarTarefa() {
-    console.log('💾 Salvando tarefa...');
-    
-    const tarefa = {
-        titulo: document.getElementById('tarefaTitulo').value,
-        descricao: document.getElementById('tarefaDescricao').value,
-        prioridade: document.getElementById('tarefaPrioridade').value,
-        status: document.getElementById('tarefaStatus').value,
-        dataInicio: document.getElementById('tarefaDataInicio').value,
-        dataFim: document.getElementById('tarefaDataFim').value,
-        responsavel: document.getElementById('tarefaResponsavel').value,
-        dataAtualizacao: firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-    try {
-        if (editandoTarefaId) {
-            console.log('✏️ Editando tarefa:', editandoTarefaId);
-            await db.collection("tarefas").doc(editandoTarefaId).update(tarefa);
-        } else {
-            console.log('🆕 Criando nova tarefa');
-            const usuarioLogado = JSON.parse(localStorage.getItem('usuarioLogado'));
-            await db.collection("tarefas").add({
-                ...tarefa,
-                dataCriacao: firebase.firestore.FieldValue.serverTimestamp(),
-                criadoPor: usuarioLogado.usuario
-            });
+    // Busca
+    document.getElementById('searchBtn').addEventListener('click', buscarConvenios);
+    document.getElementById('searchInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            buscarConvenios();
         }
-        
-        fecharModalTarefa();
-        mostrarNotificacao('Tarefa salva com sucesso!', 'success');
-    } catch (error) {
-        console.error('❌ Erro ao salvar tarefa:', error);
-        mostrarNotificacao('Erro ao salvar tarefa: ' + error.message, 'error');
-    }
-}
+    });
 
-async function excluirTarefa(tarefaId) {
-    if (!confirm('Tem certeza que deseja excluir esta tarefa?')) return;
-    
-    console.log('🗑️ Excluindo tarefa:', tarefaId);
-    
-    try {
-        await db.collection("tarefas").doc(tarefaId).delete();
-        mostrarNotificacao('Tarefa excluída com sucesso!', 'success');
-    } catch (error) {
-        console.error('❌ Erro ao excluir tarefa:', error);
-        mostrarNotificacao('Erro ao excluir tarefa', 'error');
-    }
-}
-
-// Interface
-function atualizarInterface() {
-    atualizarEstatisticas();
-    atualizarListaTarefas();
-}
-
-function atualizarEstatisticas() {
-    const total = tarefas.length;
-    const pendentes = tarefas.filter(t => t.status === 'pendente').length;
-    const andamento = tarefas.filter(t => t.status === 'andamento').length;
-    const concluidas = tarefas.filter(t => t.status === 'concluido').length;
-
-    document.getElementById('total-tarefas').textContent = total;
-    document.getElementById('tarefas-pendentes').textContent = pendentes;
-    document.getElementById('tarefas-andamento').textContent = andamento;
-    document.getElementById('tarefas-concluidas').textContent = concluidas;
-}
-
-function atualizarListaTarefas() {
-    const container = document.getElementById('lista-tarefas');
-    const tarefasFiltradas = filtrarTarefas();
-
-    if (tarefasFiltradas.length === 0) {
-        container.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-tasks"></i>
-                <h3>Nenhuma tarefa encontrada</h3>
-                <p>Clique em "Nova Tarefa" para começar</p>
-            </div>
-        `;
-        return;
-    }
-
-    container.innerHTML = tarefasFiltradas.map(tarefa => `
-        <div class="task-card prioridade-${tarefa.prioridade}">
-            <div class="task-header">
-                <div>
-                    <div class="task-title">${tarefa.titulo}</div>
-                    ${tarefa.descricao ? `<div class="task-desc">${tarefa.descricao}</div>` : ''}
-                </div>
-            </div>
-            
-            <div class="task-meta">
-                <span class="badge prioridade-${tarefa.prioridade}">
-                    ${tarefa.prioridade.charAt(0).toUpperCase() + tarefa.prioridade.slice(1)}
-                </span>
-                <span class="badge status-${tarefa.status}">
-                    ${tarefa.status === 'pendente' ? 'Pendente' : 
-                      tarefa.status === 'andamento' ? 'Em Andamento' : 'Concluído'}
-                </span>
-                ${tarefa.responsavel ? `
-                    <span class="task-responsavel">
-                        <i class="fas fa-user"></i> ${tarefa.responsavel}
-                    </span>
-                ` : ''}
-            </div>
-
-            <div class="task-meta">
-                ${tarefa.dataInicio ? `<small><i class="fas fa-play-circle"></i> ${formatarData(tarefa.dataInicio)}</small>` : ''}
-                <small><i class="fas fa-flag-checkered"></i> ${formatarData(tarefa.dataFim)}</small>
-            </div>
-
-            <div class="task-actions">
-                <button class="btn btn-outline btn-sm" onclick="abrirModalTarefa('${tarefa.id}')">
-                    <i class="fas fa-edit"></i> Editar
-                </button>
-                <button class="btn btn-danger btn-sm" onclick="excluirTarefa('${tarefa.id}')">
-                    <i class="fas fa-trash"></i> Excluir
-                </button>
-            </div>
-        </div>
-    `).join('');
-}
-
-function filtrarTarefas() {
-    const termo = document.getElementById('searchInput').value.toLowerCase();
-    const status = document.getElementById('filterStatus').value;
-    const prioridade = document.getElementById('filterPrioridade').value;
-    const responsavel = document.getElementById('filterResponsavel').value;
-
-    return tarefas.filter(tarefa => {
-        if (termo && !tarefa.titulo.toLowerCase().includes(termo) && 
-            !(tarefa.descricao && tarefa.descricao.toLowerCase().includes(termo))) {
-            return false;
+    // Modal
+    document.querySelector('.close').addEventListener('click', fecharModal);
+    window.addEventListener('click', function(e) {
+        const modal = document.getElementById('detalhesModal');
+        if (e.target === modal) {
+            fecharModal();
         }
-        if (status && tarefa.status !== status) return false;
-        if (prioridade && tarefa.prioridade !== prioridade) return false;
-        if (responsavel && tarefa.responsavel !== responsavel) return false;
-        return true;
+    });
+
+    // Logout
+    document.querySelector('.logout-btn').addEventListener('click', function() {
+        if (confirm('Deseja realmente sair do sistema?')) {
+            alert('Saindo do sistema...');
+            // Aqui você pode redirecionar para a página de login
+        }
     });
 }
 
-// Utils
-function formatarData(dataString) {
-    if (!dataString) return 'Não definida';
-    return new Date(dataString + 'T00:00:00').toLocaleDateString('pt-BR');
+function carregarListaConvenios() {
+    const tbody = document.getElementById('conveniosTableBody');
+    tbody.innerHTML = '';
+
+    convenios.forEach(convenio => {
+        const tr = document.createElement('tr');
+        
+        tr.innerHTML = `
+            <td>${convenio.id}</td>
+            <td>${convenio.nome}</td>
+            <td>${formatarTipo(convenio.tipo)}</td>
+            <td><span class="status-${convenio.status}">${formatarStatus(convenio.status)}</span></td>
+            <td>${formatarData(convenio.dataCriacao)}</td>
+            <td>
+                <button class="btn-action view" onclick="verDetalhes(${convenio.id})" title="Ver detalhes">👁️</button>
+                <button class="btn-action edit" onclick="editarConvenio(${convenio.id})" title="Editar">✏️</button>
+                <button class="btn-action delete" onclick="excluirConvenio(${convenio.id})" title="Excluir">🗑️</button>
+            </td>
+        `;
+        
+        tbody.appendChild(tr);
+    });
 }
 
-function mostrarNotificacao(mensagem, tipo) {
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 15px 20px;
-        border-radius: 8px;
-        color: white;
-        font-weight: 500;
-        z-index: 10000;
-        background: ${tipo === 'success' ? '#28a745' : '#dc3545'};
-    `;
-    notification.textContent = mensagem;
-    document.body.appendChild(notification);
+function popularSelectConvenios() {
+    const select = document.getElementById('convenioSelect');
+    select.innerHTML = '<option value="">Selecione um convênio...</option>';
     
-    setTimeout(() => {
-        document.body.removeChild(notification);
-    }, 3000);
+    convenios.forEach(convenio => {
+        const option = document.createElement('option');
+        option.value = convenio.id;
+        option.textContent = `${convenio.nome} (${formatarStatus(convenio.status)})`;
+        select.appendChild(option);
+    });
 }
 
-function mostrarErro(mensagem) {
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 15px 20px;
-        border-radius: 8px;
-        color: white;
-        font-weight: 500;
-        z-index: 10000;
-        background: #dc3545;
-        text-align: center;
-    `;
-    notification.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${mensagem}`;
-    document.body.appendChild(notification);
+function enviarSolicitacao() {
+    const formData = {
+        nomeSolicitante: document.getElementById('nomeSolicitante').value,
+        emailSolicitante: document.getElementById('emailSolicitante').value,
+        tipoConvenio: document.getElementById('tipoConvenio').value,
+        descricao: document.getElementById('descricao').value
+    };
+
+    // Simulação de envio para o servidor
+    console.log('Solicitação enviada:', formData);
     
-    setTimeout(() => {
-        document.body.removeChild(notification);
-    }, 5000);
+    // Aqui você faria uma requisição AJAX para o backend
+    alert('Solicitação enviada com sucesso!');
+    
+    // Limpar formulário
+    document.getElementById('solicitacaoForm').reset();
 }
 
-function logout() {
-    console.log('🚪 Fazendo logout...');
-    localStorage.removeItem('usuarioLogado');
-    window.location.href = 'login.html';
-}
+function atualizarConvenio() {
+    const convenioId = document.getElementById('convenioSelect').value;
+    const novoStatus = document.getElementById('novoStatus').value;
+    const observacoes = document.getElementById('observacoes').value;
 
-// Event Listeners para filtros
-document.getElementById('searchInput').addEventListener('input', atualizarListaTarefas);
-document.getElementById('filterStatus').addEventListener('change', atualizarListaTarefas);
-document.getElementById('filterPrioridade').addEventListener('change', atualizarListaTarefas);
-document.getElementById('filterResponsavel').addEventListener('change', atualizarListaTarefas);
-
-// Fechar modal clicando fora
-window.onclick = function(event) {
-    const modal = document.getElementById('modalTarefa');
-    if (event.target === modal) {
-        fecharModalTarefa();
+    if (!convenioId) {
+        alert('Por favor, selecione um convênio.');
+        return;
     }
+
+    // Encontrar e atualizar o convênio
+    const convenioIndex = convenios.findIndex(c => c.id == convenioId);
+    if (convenioIndex !== -1) {
+        convenios[convenioIndex].status = novoStatus;
+        
+        // Simulação de atualização no servidor
+        console.log('Convênio atualizado:', convenios[convenioIndex]);
+        console.log('Observações:', observacoes);
+        
+        alert('Convênio atualizado com sucesso!');
+        
+        // Atualizar a interface
+        carregarListaConvenios();
+        popularSelectConvenios();
+        document.getElementById('atualizacaoForm').reset();
+    }
+}
+
+function buscarConvenios() {
+    const termo = document.getElementById('searchInput').value.toLowerCase();
+    const tbody = document.getElementById('conveniosTableBody');
+    tbody.innerHTML = '';
+
+    const conveniosFiltrados = convenios.filter(convenio => 
+        convenio.nome.toLowerCase().includes(termo) ||
+        convenio.tipo.toLowerCase().includes(termo) ||
+        convenio.status.toLowerCase().includes(termo)
+    );
+
+    if (conveniosFiltrados.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Nenhum convênio encontrado</td></tr>';
+        return;
+    }
+
+    conveniosFiltrados.forEach(convenio => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${convenio.id}</td>
+            <td>${convenio.nome}</td>
+            <td>${formatarTipo(convenio.tipo)}</td>
+            <td><span class="status-${convenio.status}">${formatarStatus(convenio.status)}</span></td>
+            <td>${formatarData(convenio.dataCriacao)}</td>
+            <td>
+                <button class="btn-action view" onclick="verDetalhes(${convenio.id})" title="Ver detalhes">👁️</button>
+                <button class="btn-action edit" onclick="editarConvenio(${convenio.id})" title="Editar">✏️</button>
+                <button class="btn-action delete" onclick="excluirConvenio(${convenio.id})" title="Excluir">🗑️</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function verDetalhes(id) {
+    const convenio = convenios.find(c => c.id === id);
+    if (convenio) {
+        const modal = document.getElementById('detalhesModal');
+        const conteudo = document.getElementById('detalhesConteudo');
+        
+        conteudo.innerHTML = `
+            <div style="line-height: 1.6;">
+                <p><strong>ID:</strong> ${convenio.id}</p>
+                <p><strong>Nome:</strong> ${convenio.nome}</p>
+                <p><strong>Tipo:</strong> ${formatarTipo(convenio.tipo)}</p>
+                <p><strong>Status:</strong> <span class="status-${convenio.status}">${formatarStatus(convenio.status)}</span></p>
+                <p><strong>Data de Criação:</strong> ${formatarData(convenio.dataCriacao)}</p>
+                <p><strong>E-mail:</strong> ${convenio.email}</p>
+                <p><strong>Descrição:</strong> ${convenio.descricao}</p>
+            </div>
+        `;
+        
+        modal.style.display = 'block';
+    }
+}
+
+function editarConvenio(id) {
+    // Selecionar o convênio no dropdown de atualização
+    document.getElementById('convenioSelect').value = id;
+    
+    // Rolar até a seção de atualização
+    document.querySelector('#atualizacaoForm').scrollIntoView({
+        behavior: 'smooth'
+    });
+}
+
+function excluirConvenio(id) {
+    const convenio = convenios.find(c => c.id === id);
+    
+    if (convenio && confirm(`Tem certeza que deseja excluir o convênio "${convenio.nome}"?`)) {
+        // Simulação de exclusão
+        convenios = convenios.filter(c => c.id !== id);
+        
+        alert('Convênio excluído com sucesso!');
+        carregarListaConvenios();
+        popularSelectConvenios();
+    }
+}
+
+function fecharModal() {
+    document.getElementById('detalhesModal').style.display = 'none';
+}
+
+// Funções auxiliares
+function formatarTipo(tipo) {
+    const tipos = {
+        'saude': 'Saúde',
+        'educacao': 'Educação',
+        'cultural': 'Cultural',
+        'comercial': 'Comercial'
+    };
+    return tipos[tipo] || tipo;
+}
+
+function formatarStatus(status) {
+    const statusMap = {
+        'ativo': 'Ativo',
+        'inativo': 'Inativo',
+        'pendente': 'Pendente',
+        'expirado': 'Expirado'
+    };
+    return statusMap[status] || status;
+}
+
+function formatarData(dataString) {
+    const data = new Date(dataString);
+    return data.toLocaleDateString('pt-BR');
 }
